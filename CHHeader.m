@@ -14,7 +14,7 @@ classdef CHHeader < matlab.mixin.Copyable %je mozne kopirovat pomoci E.copy();
         sortedby; %podle ceho jsou kanaly serazeny
         plotCh2D; %udaje o 2D grafu kanalu ChannelPlot2D, hlavne handle
         plotCh3D; %udaje o 3D grafu kanalu ChannelPlot, hlavne handle
-        
+        ieegdata;
     end
     %#ok<*PROPLC>
     
@@ -23,11 +23,15 @@ classdef CHHeader < matlab.mixin.Copyable %je mozne kopirovat pomoci E.copy();
     end
     
     methods (Access = public)
-        function obj = CHHeader(H,filename)
+        function obj = CHHeader(H,filename,ieegdata)
             %konstruktor
             obj.H = H;     
             if exist('filename','var') && ~isempty(filename)
                obj.H.filename = filename;
+            end
+            if exist('ieegdata','var') && ~isempty(ieegdata)    % potrebuji znat nadrazenou tridu, abych z ni dostal event
+                obj.ieegdata = ieegdata;    %TODO: tohle by se dalo udelat cisteji, je to tu kvuli 3D mozku, ale byl by pomerne velky zasah do architektury
+                addlistener(obj.ieegdata, 'selectedChannel', 'PostSet', @obj.channelChangedCallback);
             end
               %nefunguje protoze name je napriklad RG12 a ne jen RG, takze neni unikatni pro kazdou elektrodu
 %             E = cell(size(H.electrodes,2),1); %#ok<*PROP>
@@ -42,7 +46,6 @@ classdef CHHeader < matlab.mixin.Copyable %je mozne kopirovat pomoci E.copy();
              obj = obj.SelChannels(); 
              obj.sortorder = 1:numel(obj.H.channels); %defaultni sort order
              obj.sortedby = '';
-             
         end
         
         function [obj, chgroups, els] = ChannelGroups(obj,chnsel,subjname)
@@ -271,14 +274,33 @@ classdef CHHeader < matlab.mixin.Copyable %je mozne kopirovat pomoci E.copy();
                 end %barevna skala, jen pokud jsou ruzne hodnoty kanalu
                 if obj.plotCh3D.zoom < 2, axis equal;  end %maximalni zoom je bez stejnych os
                 title(popis);
+                obj.plotCh3D.dispChannels = chnsel; % ulozim vyber zobrazenych kanalu (je potreba pro klikani)
                 %rozhybani obrazku            
                 set(obj.plotCh3D.fh,'KeyPressFcn',@obj.hybejPlot3D);
+                set(obj.plotCh3D.fh, 'WindowButtonDownFcn', @obj.hybejPlot3Dclick);
             else
                 disp('No MNI data');
             end
         end
         
-        
+        function highlightChannel(obj, ch)
+          if ch && isfield(obj.plotCh3D,'fh') && ishandle(obj.plotCh3D.fh) % pokud mam otevreny plot
+            ax = obj.plotCh3D.fh.CurrentAxes;
+            %disp(displayedChannels(closestChannel).name)
+            x = obj.H.channels(ch).MNI_x; y = obj.H.channels(ch).MNI_y; z = obj.H.channels(ch).MNI_z;
+            if isfield(obj.plotCh3D, 'selHandle') % smazu predchozi oznaceni, pokud nejake bylo
+                delete(obj.plotCh3D.selHandle)
+                delete(obj.plotCh3D.selNameHandle)
+            end
+            obj.plotCh3D.selHandle = scatter3(ax, x, y, z, 200, 'r', 'fill'); % oznacim vybrany kanal na 3D grafu
+            obj.plotCh3D.selNameHandle = annotation(obj.plotCh3D.fh, 'textbox',[0 1 0 0],'String',obj.H.channels(ch).name,'FitBoxToText','on');
+          else  % pokud se zadny kanal nenasel (kliknuti mimo)
+             if isfield(obj.plotCh3D, 'selHandle') % smazu predchozi oznaceni, pokud nejake bylo
+               delete(obj.plotCh3D.selHandle)
+               delete(obj.plotCh3D.selNameHandle)
+             end
+          end
+        end
         
         function ChannelPlot2D(obj,chsel,plotRCh,plotChH,label)
             %vstupni promenne
@@ -850,6 +872,23 @@ classdef CHHeader < matlab.mixin.Copyable %je mozne kopirovat pomoci E.copy();
                     obj.ChannelPlot();
               end
           end
+          
+          function hybejPlot3Dclick(obj, ~, ~)
+              mousept = get(gca,'currentPoint');
+              p1 = mousept(1,:); p2 = mousept(2,:); % souradnice kliknuti v grafu - predni a zadni bod
+              displayedChannels = obj.H.channels(obj.plotCh3D.dispChannels); % zobrazene kanaly
+              %displayedChannels = obj.plotAUC.Eh.CH.H.channels(obj.plotAUC_m.channels); % zobrazene kanaly
+              coordinates = [displayedChannels.MNI_x; displayedChannels.MNI_y; displayedChannels.MNI_z];    % souradnice zobrazenych kanalu
+              closestChannel = findClosestPoint(p1, p2, coordinates, 2);    % najdu kanal nejblize mistu kliknuti
+              if closestChannel
+                  ch = obj.plotCh3D.dispChannels(closestChannel);
+                  obj.ieegdata.SelectChannel(ch);
+              else
+                  obj.ieegdata.SelectChannel(0);
+              end
+              figure(obj.plotCh3D.fh);
+          end
+          
           function obj = hybejPlot2D(obj,~,eventDat) 
               switch eventDat.Key
                   case {'rightarrow','c'} %dalsi kanal
@@ -956,6 +995,11 @@ classdef CHHeader < matlab.mixin.Copyable %je mozne kopirovat pomoci E.copy();
                   
               end
           end
+          
+        function channelChangedCallback(obj, ~, eventData)
+            obj.highlightChannel(eventData.AffectedObject.selectedChannel);
+        end
+          
     end
     
 end

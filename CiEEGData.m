@@ -39,7 +39,7 @@ classdef CiEEGData < matlab.mixin.Copyable
     end
     
     properties(SetObservable)
-        SelectedChannel
+        selectedChannel
     end
     
     methods (Access = public)
@@ -129,7 +129,7 @@ classdef CiEEGData < matlab.mixin.Copyable
             if isfield(H,'selCh_H'),  H_channels = size(H.selCh_H,2); else, H_channels = 0; end
             assert(H_channels == size(obj.d,2) || size(H.channels,2)==size(obj.d,2), ...
                  ['nesouhlasi pocet elektrod (data:' num2str(size(obj.d,2)) ',H_channels:' num2str(H_channels) ', header' num2str(size(H.channels,2)) ') - spatny header?']);
-            obj.CH = CHHeader(H,filename); %vypocita i selCh_H
+            obj.CH = CHHeader(H,filename,obj); %vypocita i selCh_H
             [~, ~, obj.els] = obj.CH.ChannelGroups();  
             assert(max(obj.els)<=size(obj.d,2),['nesouhlasi pocet elektrod (data:' num2str(size(obj.d,2)) ',header:' num2str(max(obj.els)) ') - spatny header?']);
             
@@ -1478,8 +1478,9 @@ classdef CiEEGData < matlab.mixin.Copyable
                 text(-0.1,ymax*.72, ['show:  ' obj.CH.plotCh2D.chshowstr '=' mat2str(obj.CH.plotCh2D.chshow)], 'FontSize', 10);
             end
             methodhandle = @obj.hybejPlotCh;
-            set(obj.plotRCh.fh,'KeyPressFcn',methodhandle);      
-            obj.SelectedChannel = ch;
+            set(obj.plotRCh.fh,'KeyPressFcn',methodhandle);
+            
+            obj.selectedChannel = ch;
         end        
             
         function obj = PlotResponseP(obj)
@@ -1680,7 +1681,7 @@ classdef CiEEGData < matlab.mixin.Copyable
                 obj.epochData = [];
             end
             if ismember('CH_H', {vars.name})
-                load(filename,'CH_H');      obj.CH = CHHeader(CH_H);
+                load(filename,'CH_H');      obj.CH = CHHeader(CH_H,[],obj);
                 [~, ~, obj.els] = obj.CH.ChannelGroups([],isa(obj,'CHilbertMulti'));  
             else
                 load(filename,'CH');
@@ -1863,6 +1864,15 @@ classdef CiEEGData < matlab.mixin.Copyable
             xlsfilename = fullfile('logs', [logfilename '.xls']);            
             writetable(tablelog, xlsfilename); %zapisu do xls tabulky            
             disp([ 'XLS table saved: ' xlsfilename]);
+        end
+        
+        function SelectChannel(obj, ch)
+            if isfield(obj.plotRCh, 'fh') && isvalid(obj.plotRCh.fh) && ch ~= 0    % nulovy kanal (tj. zruseni vyberu) pouze ulozim
+                sortChannel = find(obj.CH.sortorder == ch);
+                obj.PlotResponseCh(sortChannel);    % PlotResponseCh nastavi selectedChannel na novou hodnotu
+            else
+                obj.selectedChannel = ch;  % Nemam plot - jen nastavim novou hodnotu a nic nekreslim
+            end
         end
     end
     %% staticke metody
@@ -2080,6 +2090,7 @@ classdef CiEEGData < matlab.mixin.Copyable
                 otherwise
                     disp(['You just pressed: ' eventDat.Key]);
             end
+            figure(obj.plotRCh.fh); %dam puvodni obrazek dopredu
         end
         
         function obj = hybejPlotEpochs(obj,~,eventDat)

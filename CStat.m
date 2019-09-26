@@ -323,7 +323,8 @@ classdef CStat < handle
             if figurenew %jen pokud kreslim graf poprve
                 disp(['significant channels: ' num2str(channels(logical(sig)),'%i ')]);
                 disp(['not significant channels: ' num2str(channels(~logical(sig)),'%i ')]);
-                obj.AUCPlotMMax(channels);    %spocitam si razeni kanalu podle maxima AUC krivek            
+                obj.AUCPlotMMax(channels);    %spocitam si razeni kanalu podle maxima AUC krivek
+                addlistener(obj.plotAUC.Eh, 'selectedChannel', 'PostSet', @obj.channelChangedCallback);
             end
             set(obj.plotAUC_m.fh,'KeyPressFcn',@obj.hybejAUCPlotM); 
         end
@@ -350,7 +351,6 @@ classdef CStat < handle
             points = obj.plotAUC.Eh.CH.ChannelPlot([],0,vals,... %param chnvals
                 obj.plotAUC_m.channels,... %chnsel jsou cisla kanalu, pokud chci jen jejich vyber
                 obj.plotAUC_m.chsort(selch)); %selch je jedno zvyraznene cislo kanalu - index v poli chnsel
-            set(obj.plotAUC.Eh.CH.plotCh3D.fh, 'WindowButtonDownFcn', {@obj.hybejPlot3Dclick, selch});
         end
       
         function AUC2XLS(obj, val_fraction, int_fraction)
@@ -689,31 +689,24 @@ classdef CStat < handle
             end
         end
         
-        function hybejPlot3Dclick(obj, ~, ~, ~)
-          mousept = get(gca,'currentPoint');
-          p1 = mousept(1,:); p2 = mousept(2,:); % souradnice kliknuti v grafu - predni a zadni bod
-          displayedChannels = obj.plotAUC.Eh.CH.H.channels(obj.plotAUC_m.channels); % zobrazene kanaly
-          coordinates = [displayedChannels.MNI_x; displayedChannels.MNI_y; displayedChannels.MNI_z];    % souradnice zobrazenych kanalu
-          closestChannel = findClosestPoint(p1, p2, coordinates, 2);    % najdu kanal nejblize mistu kliknuti
-          if closestChannel  % pokud jsem nejaky nasel:
-            %disp(displayedChannels(closestChannel).name)
-            x = coordinates(1,closestChannel); y = coordinates(2,closestChannel); z = coordinates(3,closestChannel);
-            if isfield(obj.plotAUC.Eh.CH.plotCh3D, 'selHandle') % smazu predchozi oznaceni, pokud nejake bylo
-                delete(obj.plotAUC.Eh.CH.plotCh3D.selHandle)
-                delete(obj.plotAUC.Eh.CH.plotCh3D.selNameHandle)
+        function highlightChannelAUC(obj, ch)
+            % ch je skutecne cislo kanalu
+            if ch && isfield(obj.plotAUC_m,'fh')
+                sortIndex = find(obj.plotAUC_m.channels==ch);
+                chS = find(obj.plotAUC_m.chsort == sortIndex, 1);
+                if ~isempty(chS)
+                    obj.AUCPlotM([],[],chS); % zvyraznim vybrany kanal v AUC plotu
+                else
+                    obj.AUCPlotM([],[],0); % kanal neni na AUC plotu
+                end
+            else  % pokud se zadny kanal nenasel (kliknuti mimo)
+                obj.AUCPlotM([],[],0); % zrusim zvyrazneni
             end
-            obj.plotAUC.Eh.CH.plotCh3D.selHandle = scatter3(x, y, z, 200, 'r', 'fill'); % oznacim vybrany kanal na 3D grafu
-            obj.plotAUC.Eh.CH.plotCh3D.selNameHandle = annotation('textbox',[0 1 0 0],'String',displayedChannels(closestChannel).name,'FitBoxToText','on');
-            obj.AUCPlotM([],[],find(obj.plotAUC_m.chsort == closestChannel, 1)); % oznacim vybrany kanal v AUC plotu
-          else  % pokud se zadny kanal nenasel (kliknuti mimo)
-             if isfield(obj.plotAUC.Eh.CH.plotCh3D, 'selHandle') % smazu predchozi oznaceni, pokud nejake bylo
-               delete(obj.plotAUC.Eh.CH.plotCh3D.selHandle)
-               delete(obj.plotAUC.Eh.CH.plotCh3D.selNameHandle)
-             end
-             %TODO: Zrusit zvyrazneni v AUC plotu
-          end
         end
         
+        function channelChangedCallback(obj, ~, eventData)
+            obj.highlightChannelAUC(eventData.AffectedObject.selectedChannel);
+        end
     end
     
 end

@@ -172,7 +172,7 @@ classdef ScatterPlot < handle
             zlabel(obj.ax, 'channel');
 
             obj.filterListener = addlistener(obj.ieegdata.CH, 'FilterChanged', @obj.filterChangedCallback);
-            obj.channelListener = addlistener(obj.ieegdata, 'SelectedChannel', 'PostSet', @obj.channelChangedCallback);
+            obj.channelListener = addlistener(obj.ieegdata, 'selectedChannel', 'PostSet', @obj.channelChangedCallback);
             
             set(obj.fig, 'KeyPressFcn', @obj.hybejScatterPlot);
             set(obj.fig, 'WindowButtonDownFcn', @obj.hybejScatterPlotClick);
@@ -191,11 +191,11 @@ classdef ScatterPlot < handle
         function updatePlot(obj)
             obj.setDisplayedChannels(); % Kombinace voleb pro zobrazeni kanalu
             selChFiltered = obj.selCh(obj.dispChannels,:); %filter kanalu ve vyberu fghjkl
-            delete(obj.plots); obj.plots = [];
-            delete(obj.sbox);
-            delete(obj.pbox);            
-            delete(obj.connectionsPlot); obj.connectionsPlot = [];
-            delete(obj.numbers); obj.numbers = [];            
+            if ~isempty(obj.plots), delete(obj.plots), end; obj.plots = [];
+            if ~isempty(obj.sbox), delete(obj.sbox), end
+            if ~isempty(obj.sbox), delete(obj.pbox), end
+            if ~isempty(obj.connectionsPlot), delete(obj.connectionsPlot), end; obj.connectionsPlot = [];
+            if ~isempty(obj.numbers), delete(obj.numbers), end; obj.numbers = [];      
             
             if ~isempty(obj.dispSelChName)
                 obj.sbox = annotation(obj.fig, 'textbox',[0 .9 .4 .1], 'String', obj.dispSelChName, 'EdgeColor', 'none');
@@ -310,32 +310,6 @@ classdef ScatterPlot < handle
             end
         end
         
-        function connectChannels3D(obj)
-        % Nakresli linku spojujici stejne kanaly. Ruzne barvy musi byt samostatny plot (aby mohl scatter zustat ve stejnych osach)
-            if length(obj.categoriesSelectionIndex) > 1
-                catIndex = zeros(size(obj.categoriesSelectionIndex(1)));
-                x = zeros(length(obj.categoriesSelectionIndex(1)), length(obj.stats(1).(obj.axisX)));
-                y = zeros(length(obj.categoriesSelectionIndex(1)), length(obj.stats(1).(obj.axisX)));
-                for cat = 1:length(obj.categoriesSelectionIndex)
-                    catIndex(cat) = obj.categoriesSelectionIndex(cat);
-                    x(cat,:) = obj.stats(cat).(obj.axisX);
-                    y(cat,:) = obj.stats(cat).(obj.axisY);
-                end
-                l = length(obj.stats(catIndex(1)).(obj.axisX));
-                for c1 = 1:length(obj.categoriesSelectionIndex)
-                    for c2 = 1:c1-1
-                        for k = 1:l
-                            z = obj.dispChannels(k);
-                            obj.connectionsPlot(end+1) = plot([x(c1,k) x(c2,k)], [y(c1,k) y(c2,k)], [z z], 'Color', [0.5 0.5 0.5], 'HandleVisibility','off');
-                        end
-                    end
-                end
-            else
-                disp('No categories to connect');
-                obj.connectChannels = false;
-            end
-        end
-        
         function highlightSelected(obj, ch)
             if ~isempty(obj.highlights)
                 delete(obj.highlights);
@@ -400,8 +374,6 @@ classdef ScatterPlot < handle
 
             mousept = get(gca,'currentPoint');
             p1 = mousept(1,:); p2 = mousept(2,:); % souradnice kliknuti v grafu - predni a zadni bod
-            disp(p1);
-            disp(p2);
             chs  = zeros(size(obj.categoriesSelectionIndex));
             dist = zeros(size(obj.categoriesSelectionIndex));
             for k = obj.categoriesSelectionIndex % vsechny zobrazene kategorie
@@ -423,19 +395,13 @@ classdef ScatterPlot < handle
             [mindist, k_min] = min(dist); % vyberu skutecne nejblizsi kanal ze vsech kategorii
 
             if mindist < inf
-              ch = obj.dispChannels(chs(k_min));
-              %TODO: Pokud neni otevreny PlotResponseCh, nebude po otevreni znat cislo vybraneho kanalu. Lepsi by bylo pouzit proxy objekt, ktery drzi informaci o vybranem kanalu a v pripade zmeny vyberu posle signal, ktery se tak zpropaguje do vsech plotu, ktere ho potrebuji.
-              if isfield(obj.ieegdata.plotRCh, 'fh') && isvalid(obj.ieegdata.plotRCh.fh)  % Zjistim, jeslti je otevreny PlotResponseCh
-                  sortChannel = find(obj.ieegdata.CH.sortorder == ch);
-                  obj.ieegdata.PlotResponseCh(sortChannel);    % Pokud mam PlotResponseCh, updatuju zobrezene kanaly
-                  % Nevolam highlightSelected, protoze ten se zavola diky eventu
-                  figure(obj.fig); %kamil - dam do popredi scatter plot
-              else
-                  obj.highlightSelected(ch);
-                  %TODO: Pokud ted manualne otevru PlotResponseCh bez parametru, neuvidim v nem spranvy kanal
-              end
+                ch = obj.dispChannels(chs(k_min));
+                %TODO: Pokud neni otevreny PlotResponseCh, nebude po otevreni znat cislo vybraneho kanalu. Lepsi by bylo pouzit proxy objekt, ktery drzi informaci o vybranem kanalu a v pripade zmeny vyberu posle signal, ktery se tak zpropaguje do vsech plotu, ktere ho potrebuji.
+                obj.ieegdata.SelectChannel(ch);    % Pokud mam PlotResponseCh, updatuju zobrezene kanaly
+                % Nevolam highlightSelected, protoze ten se zavola diky eventu
+                figure(obj.fig); %kamil - dam do popredi scatter plot
             else
-                obj.highlightSelected(0);   % zrusi vyber
+                obj.ieegdata.SelectChannel(0);   % zrusi vyber
             end
         end
 
@@ -450,8 +416,7 @@ classdef ScatterPlot < handle
         end
 
         function channelChangedCallback(obj, ~, eventData)
-            obj.highlightSelected(eventData.AffectedObject.SelectedChannel);
-            disp(['change in SP: ' num2str(eventData.AffectedObject.SelectedChannel)]);
+            obj.highlightSelected(eventData.AffectedObject.selectedChannel);
         end
         
         function tearDownFigCallback(obj,src,~)
